@@ -1,0 +1,6 @@
+{
+  "name": "World Cup 2026 Sweepstakes",
+  "description": "A premium, corporate-grade sweepstakes manager for FIFA World Cup 2026. Fast CSV employee imports, interactive high-energy live animated draws with 3D physical bowl simulations, audit logs, and branded PDF reporting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
