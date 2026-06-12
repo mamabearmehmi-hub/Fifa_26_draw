@@ -15,6 +15,9 @@ function getAudioContext(): AudioContext {
   return audioContext;
 }
 
+let activeOscillators: OscillatorNode[] = [];
+let activeGains: GainNode[] = [];
+
 /**
  * Plays a custom synthesized drumroll that builds up in intensity.
  */
@@ -22,6 +25,7 @@ export function playSynthesizedDrumroll() {
   try {
     const ctx = getAudioContext();
     const duration = 2.8; // seconds
+    const now = ctx.currentTime;
 
     // Stop existing sounds if running
     stopSynthesizedDrumroll();
@@ -41,29 +45,29 @@ export function playSynthesizedDrumroll() {
     // Filter to shape raw noise into a snare drum texture
     const filter = ctx.createBiquadFilter();
     filter.type = "bandpass";
-    filter.frequency.setValueAtTime(180, ctx.currentTime);
+    filter.frequency.setValueAtTime(180, now);
     // Rapidly modulate frequency to simulate drum rattles
     for (let t = 0; t < duration; t += 0.05) {
-      filter.frequency.setValueAtTime(140 + Math.random() * 80, ctx.currentTime + t);
+      filter.frequency.setValueAtTime(140 + Math.random() * 80, now + t);
     }
 
     // Drum kick tone to accompany the roll (low rumbling frequency)
     const oscillator = ctx.createOscillator();
     oscillator.type = "triangle";
-    oscillator.frequency.setValueAtTime(65, ctx.currentTime);
+    oscillator.frequency.setValueAtTime(65, now);
     // Sub-bass vibrato
     for (let t = 0; t < duration; t += 0.1) {
-      oscillator.frequency.setValueAtTime(60 + Math.sin(t * 30) * 10, ctx.currentTime + t);
+      oscillator.frequency.setValueAtTime(60 + Math.sin(t * 30) * 10, now + t);
     }
 
     // Gain envelope to build up excitement
     drumrollGain = ctx.createGain();
-    drumrollGain.gain.setValueAtTime(0.01, ctx.currentTime);
+    drumrollGain.gain.setValueAtTime(0.01, now);
     // Linear build up
-    drumrollGain.gain.exponentialRampToValueAtTime(0.35, ctx.currentTime + duration - 0.2);
+    drumrollGain.gain.exponentialRampToValueAtTime(0.35, now + duration - 0.2);
     // Fade out slightly at very end before the crash
-    drumrollGain.gain.setValueAtTime(0.35, ctx.currentTime + duration - 0.25);
-    drumrollGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    drumrollGain.gain.setValueAtTime(0.35, now + duration - 0.25);
+    drumrollGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
 
     // Connections
     noise.connect(filter);
@@ -77,6 +81,56 @@ export function playSynthesizedDrumroll() {
     oscillator.start();
 
     drumrollSource = noise;
+    activeOscillators.push(oscillator);
+
+    // --- "WHOOOOOOAAAAAAAA!" STADIUM SUSPENSE VOCAL GLIDE SYNTHESIS ---
+    // Detuned oscillators mimicking standard vocal frequencies sweeping on an "ooh -> aah" transition
+    const vocalPitches = [
+      { type: "sawtooth" as OscillatorType, startOffset: 120, endOffset: 240, detune: -10, volume: 0.15 },
+      { type: "triangle" as OscillatorType, startOffset: 180, endOffset: 360, detune: 0, volume: 0.22 },
+      { type: "sawtooth" as OscillatorType, startOffset: 240, endOffset: 480, detune: 12, volume: 0.15 }
+    ];
+
+    vocalPitches.forEach((v) => {
+      const vOscObj = ctx.createOscillator();
+      vOscObj.type = v.type;
+      vOscObj.detune.setValueAtTime(v.detune, now);
+      
+      // Pitch glide: starts low and glides upward in extreme tension!
+      vOscObj.frequency.setValueAtTime(v.startOffset, now);
+      vOscObj.frequency.exponentialRampToValueAtTime(v.endOffset, now + duration - 0.15);
+
+      // Warm lowpass filter to emulate the throat resonance
+      const warmFilter = ctx.createBiquadFilter();
+      warmFilter.type = "lowpass";
+      warmFilter.frequency.setValueAtTime(900, now);
+      warmFilter.frequency.exponentialRampToValueAtTime(1400, now + duration - 0.1);
+
+      // Highly resonant bandpass filter to shape Formants (sweeping creates "ooh" to "aah" mouth shape)
+      const formantFilter = ctx.createBiquadFilter();
+      formantFilter.type = "bandpass";
+      formantFilter.Q.setValueAtTime(5.8, now); // strong formant resonance
+      formantFilter.frequency.setValueAtTime(290, now); // "ooh" vowel range
+      formantFilter.frequency.exponentialRampToValueAtTime(900, now + duration - 0.2); // sweep into "aah" vowel range
+
+      const vGainNode = ctx.createGain();
+      vGainNode.gain.setValueAtTime(0.001, now);
+      vGainNode.gain.linearRampToValueAtTime(v.volume, now + 0.3); // swell in
+      vGainNode.gain.exponentialRampToValueAtTime(v.volume * 1.5, now + duration - 0.3); // intensity climax peak
+      vGainNode.gain.exponentialRampToValueAtTime(0.001, now + duration); // clean teardown as fanfare crashes
+
+      vOscObj.connect(warmFilter);
+      warmFilter.connect(formantFilter);
+      formantFilter.connect(vGainNode);
+      vGainNode.connect(ctx.destination);
+
+      vOscObj.start(now);
+      vOscObj.stop(now + duration);
+
+      activeOscillators.push(vOscObj);
+      activeGains.push(vGainNode);
+    });
+
   } catch (e) {
     console.warn("Could not play synthesized drumroll:", e);
   }
@@ -95,6 +149,15 @@ export function stopSynthesizedDrumroll() {
       drumrollGain.disconnect();
       drumrollGain = null;
     }
+    activeOscillators.forEach((osc) => {
+      try { osc.stop(); } catch(err) {}
+      try { osc.disconnect(); } catch(err) {}
+    });
+    activeOscillators = [];
+    activeGains.forEach((gn) => {
+      try { gn.disconnect(); } catch(err) {}
+    });
+    activeGains = [];
   } catch (e) {
     // Already stopped or uninitialized
   }

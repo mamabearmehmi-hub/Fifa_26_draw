@@ -93,6 +93,10 @@ export default function App() {
   // Drag and drop state
   const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
 
+  // Custom confirmation modals for Admin Actions
+  const [isAdminResetConfirmOpen, setIsAdminResetConfirmOpen] = useState<boolean>(false);
+  const [isAdminFastPassConfirmOpen, setIsAdminFastPassConfirmOpen] = useState<boolean>(false);
+
   // File Input Ref
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -574,32 +578,128 @@ export default function App() {
 
         {/* --- TAB CONTENT 1: ADMIN HUB --- */}
         {activeTab === "admin" && (
-          <div className="w-full overflow-hidden">
+          <div className="w-full overflow-hidden relative">
+            
+            {/* Custom Confirmation Modals for Safekeeping Admin State */}
+            <AnimatePresence>
+              {isAdminResetConfirmOpen && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in"
+                >
+                  <motion.div
+                    initial={{ scale: 0.95, opacity: 0, y: 15 }}
+                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                    exit={{ scale: 0.95, opacity: 0, y: 15 }}
+                    className="bg-slate-900 border border-rose-500/30 rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative space-y-6 text-center border-t-4 border-t-rose-500"
+                  >
+                    <div className="p-3 bg-rose-500/10 text-rose-500 rounded-full w-14 h-14 flex items-center justify-center mx-auto border border-rose-500/20">
+                      <Trash2 className="w-7 h-7 animate-pulse" />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <h4 className="font-display font-black text-lg tracking-tight text-white uppercase">Confirm Hard Reset</h4>
+                      <p className="text-neutral-400 text-xs sm:text-sm leading-relaxed">
+                        Are you sure you want to trigger a hard reset? This will permanently erase the current database roster of <strong className="text-rose-400 font-bold">{employees.length} employees</strong> and wipe out all live drawn pairings from active memory. This operation is irreversible.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+                      <button
+                        onClick={() => setIsAdminResetConfirmOpen(false)}
+                        className="flex-1 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-neutral-300 font-bold rounded-xl transition text-xs sm:text-sm cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleSystemReset();
+                          setIsAdminResetConfirmOpen(false);
+                        }}
+                        className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl transition text-xs sm:text-sm shadow-lg shadow-rose-950/40 cursor-pointer"
+                      >
+                        Yes, Hard Clear
+                      </button>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+              {isAdminFastPassConfirmOpen && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in"
+                >
+                  <motion.div
+                    initial={{ scale: 0.95, opacity: 0, y: 15 }}
+                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                    exit={{ scale: 0.95, opacity: 0, y: 15 }}
+                    className="bg-slate-900 border border-yellow-500/30 rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative space-y-6 text-center border-t-4 border-t-yellow-500"
+                  >
+                    <div className="p-3 bg-yellow-500/10 text-yellow-500 rounded-full w-14 h-14 flex items-center justify-center mx-auto border border-yellow-500/20">
+                      <Sparkles className="w-7 h-7 text-yellow-500 animate-spin-slow" />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <h4 className="font-display font-black text-lg tracking-tight text-white uppercase block">Confirm Fast Pass Draw</h4>
+                      <p className="text-neutral-400 text-xs sm:text-sm leading-relaxed">
+                        Are you sure you want to perform the instant direct sweepstakes simulation? This will auto-map all <span className="text-yellow-400 font-bold font-mono">48 employees</span> to the 48 FIFA teams using bias-free direct Fisher-Yates mapping algorithms, wiping out of active memory any live pairings in progress.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+                      <button
+                        onClick={() => setIsAdminFastPassConfirmOpen(false)}
+                        className="flex-1 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-neutral-300 font-bold rounded-xl transition text-xs sm:text-sm cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleCompleteDrawSimulation();
+                          setIsAdminFastPassConfirmOpen(false);
+                        }}
+                        className="flex-1 px-4 py-2.5 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-slate-950 font-bold rounded-xl transition text-xs sm:text-sm shadow-lg cursor-pointer"
+                      >
+                        Proceed Draw Match
+                      </button>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full px-2 sm:px-4 animate-fade-in">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start w-full min-w-0">
             
-            {/* Information Banner */}
-            <div className="col-span-12 bg-gradient-to-r from-slate-900 via-slate-900 to-amber-950/20 p-4 sm:p-6 rounded-2xl border border-yellow-500/10 flex flex-col md:flex-row gap-5 items-center justify-between shadow-xl">
-              <div className="space-y-1.5 max-w-2xl text-center md:text-left">
-                <h2 className="font-display font-extrabold text-xl sm:text-2xl tracking-tight text-white flex items-center justify-center md:justify-start gap-2">
-                  <Award className="text-yellow-500 w-6 h-6 sm:w-7 sm:h-7" /> Setup Compliance & Credentials
+            {/* Information Banner (Redesigned with lg:flex-row preventing horizontal squeezing) */}
+            <div className="col-span-12 bg-gradient-to-r from-slate-900 via-slate-900 to-amber-950/25 p-5 sm:p-6 rounded-2xl border border-yellow-500/15 flex flex-col lg:flex-row gap-5 items-center justify-between shadow-xl">
+              <div className="space-y-2 max-w-3xl text-center lg:text-left">
+                <h2 className="font-display font-extrabold text-xl sm:text-2xl tracking-tight text-white flex items-center justify-center lg:justify-start gap-2">
+                  <Award className="text-yellow-500 w-6 h-6 sm:w-7 sm:h-7 shrink-0" /> Setup Compliance & Credentials
                 </h2>
-                <p className="text-neutral-400 text-xs sm:text-sm leading-relaxed">
-                  Establish transparency. Map your company's list of exactly <strong className="text-white">48 employee names</strong> to the 48 competing nations.
-                  Use a perfectly parsed CSV, or click below to launch instantly with our premium demo team.
+                <p className="text-neutral-300 text-xs sm:text-sm leading-relaxed">
+                  Establish complete transparency. Map your company's list of exactly <strong className="text-white">48 employee names</strong> to the 48 competing FIFA nations.
+                  Use a perfectly parsed spreadsheet, or click below to launch instantly with our premium demo staff directory.
                 </p>
               </div>
-              <div className="flex flex-col sm:flex-row gap-2 shrink-0 w-full md:w-auto">
+              <div className="flex flex-col sm:flex-row gap-2.5 shrink-0 w-full lg:w-auto mt-2 lg:mt-0">
                 <button
                   onClick={loadDemoEmployees}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 sm:py-3 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-slate-950 font-bold rounded-xl transition shadow-lg shrink-0 text-xs sm:text-sm hover:scale-[1.02] cursor-pointer"
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 sm:px-6 py-3 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-slate-950 font-bold rounded-xl transition shadow-lg text-xs sm:text-sm hover:scale-[1.02] cursor-pointer"
                 >
                   <Sparkles className="w-4 h-4 shrink-0" /> Fast-Track Demo
                 </button>
                 <a
                   href={getCSVTemplateURI()}
                   download="world_cup_sweepstakes_template.csv"
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 sm:py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl border border-slate-700 transition text-xs sm:text-sm text-center cursor-pointer"
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 sm:px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl border border-slate-700 transition text-xs sm:text-sm text-center cursor-pointer"
                 >
                   <Download className="w-4 h-4 shrink-0 text-neutral-400" /> Get Template CSV
                 </a>
@@ -608,7 +708,7 @@ export default function App() {
 
             {/* Left Box: CSV Drag and Drop Receiver */}
             <div className="lg:col-span-8 space-y-6">
-              <div className="bg-slate-900 p-4 sm:p-8 rounded-2xl border border-slate-800 shadow-xl space-y-6">
+              <div className="bg-slate-900 p-5 sm:p-6 rounded-2xl border border-slate-800 shadow-xl space-y-6">
                 <div>
                   <h3 className="font-display font-bold text-base sm:text-lg text-white">1. Loader Roster (CSV Standard)</h3>
                   <p className="text-neutral-400 text-xs">Standard CSV column required header: <strong className="text-yellow-500 font-mono">Employee Name</strong></p>
@@ -645,7 +745,7 @@ export default function App() {
                     </div>
                   )}
 
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 animate-fade-in">
                     <p className="font-bold text-xs sm:text-sm text-white">
                       {employees.length === 48
                         ? "Employee Roster Audited & Approved!"
@@ -659,22 +759,22 @@ export default function App() {
                   </div>
                   
                   {employees.length > 0 && employees.length !== 48 && (
-                    <div className="mt-2 bg-rose-500/10 text-rose-400 px-3 py-1.5 rounded-lg border border-rose-500/20 text-[11px] sm:text-xs flex items-center gap-1.5 font-mono leading-relaxed">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <div className="mt-2 bg-rose-500/10 text-rose-400 px-3 py-1.5 rounded-lg border border-rose-500/20 text-[10px] sm:text-xs flex items-center gap-1.5 font-mono leading-relaxed max-w-full">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-400" />
                       Status Error: Loaded {employees.length} names. Compliance mandates exactly 48!
                     </div>
                   )}
 
                   <button
                     type="button"
-                    className="mt-1 px-3 sm:px-4 py-1.5 sm:py-2 bg-slate-800 hover:bg-slate-700 text-neutral-200 hover:text-white rounded-lg text-[11px] sm:text-xs font-bold font-mono transition border border-slate-700 cursor-pointer"
+                    className="mt-1 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-neutral-250 hover:text-white rounded-lg text-[11px] sm:text-xs font-bold font-mono transition border border-slate-700 cursor-pointer shadow-md"
                   >
                     Select File Manually
                   </button>
                 </div>
 
                 {/* Company customization input */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-[10px] sm:text-xs uppercase tracking-wider text-neutral-400 font-mono font-bold block">Company / Office Name</label>
                     <input
@@ -682,7 +782,7 @@ export default function App() {
                       value={companyName}
                       onChange={(e) => setCompanyName(e.target.value)}
                       placeholder="e.g., Acme Corporation"
-                      className="w-full bg-slate-950 border border-slate-800 hover:border-slate-700 focus:border-yellow-500 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white font-medium focus:outline-none transition"
+                      className="w-full bg-slate-950 border border-slate-800 hover:border-slate-700 focus:border-yellow-500 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white font-medium focus:outline-none transition leading-relaxed"
                     />
                   </div>
                   
@@ -702,18 +802,18 @@ export default function App() {
 
                 {/* Reset or simulation buttons */}
                 {employees.length > 0 && (
-                  <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full">
+                  <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full animate-fade-in">
                     {employees.length === 48 && (
                       <button
-                        onClick={handleCompleteDrawSimulation}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-slate-950 hover:bg-slate-900 border border-yellow-500/30 hover:border-yellow-500 text-yellow-500 font-extrabold uppercase text-[11px] sm:text-xs tracking-wider rounded-xl transition cursor-pointer w-full sm:w-auto"
+                        onClick={() => setIsAdminFastPassConfirmOpen(true)}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-slate-950 hover:bg-slate-900 border border-yellow-500/25 hover:border-yellow-500/65 text-yellow-500 font-extrabold uppercase text-[11px] sm:text-xs tracking-wider rounded-xl transition cursor-pointer w-full sm:w-auto hover:text-white"
                       >
                         <Play className="w-3.5 h-3.5 text-yellow-500 animate-pulse shrink-0" /> Fast Pass (Instant Draw Match)
                       </button>
                     )}
                     
                     <button
-                      onClick={handleSystemReset}
+                      onClick={() => setIsAdminResetConfirmOpen(true)}
                       className="flex-1 sm:flex-none px-4 py-3 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-400 hover:text-white font-bold uppercase text-[11px] sm:text-xs tracking-wider rounded-xl transition flex items-center justify-center gap-2 cursor-pointer w-full sm:w-auto shrink-0"
                       title="Clear database under admin authorization"
                     >
@@ -723,23 +823,23 @@ export default function App() {
                 )}
               </div>
 
-              {/* Employees Table view */}
+              {/* Employees Table view (Fixed height matching instructions columns for alignment) */}
               {employees.length > 0 && (
-                <div className="bg-slate-900 p-4 sm:p-6 rounded-2xl border border-slate-800 shadow-xl space-y-4">
+                <div className="bg-slate-900 p-5 sm:p-6 rounded-2xl border border-slate-800 shadow-xl space-y-4 animate-fade-in">
                   <div className="flex flex-wrap gap-2 justify-between items-center font-sans">
                     <div>
                       <h4 className="font-display font-semibold text-white text-sm sm:text-base">Roster Preview Directory</h4>
                       <p className="text-neutral-400 text-xs">Total locked: {employees.length} participants</p>
                     </div>
-                    <span className="text-[9px] sm:text-[10px] font-mono bg-yellow-500/10 text-yellow-500 px-2 py-0.5 rounded border border-yellow-500/20 uppercase">Compliant database</span>
+                    <span className="text-[9px] sm:text-[10px] font-mono bg-yellow-500/10 text-yellow-500 px-2 py-0.5 rounded border border-yellow-500/20 uppercase font-bold tracking-wider">COMPLIANT</span>
                   </div>
 
-                  <div className="bg-slate-950 max-h-56 overflow-y-auto rounded-xl border border-slate-800 p-1.5 grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs font-mono scrollbar-thin scrollbar-thumb-slate-800">
+                  <div className="bg-slate-950 p-2 overflow-y-auto rounded-xl border border-slate-800 h-[280px] grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs font-mono scrollbar-thin scrollbar-thumb-slate-800">
                     {employees.map((name, i) => (
-                      <div key={i} className="bg-slate-900/60 px-2.5 py-1.5 rounded border border-slate-800/80 flex items-center justify-between gap-2 text-neutral-300">
-                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                      <div key={i} className="bg-slate-900/60 px-3 py-2 rounded-lg border border-slate-800/80 hover:border-slate-700/80 transition flex items-center justify-between gap-2 text-neutral-300">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
                           <span className="text-yellow-500/50 font-bold w-5 text-right">{i + 1}.</span>
-                          <div className="truncate flex-1">{name}</div>
+                          <div className="truncate flex-1 font-semibold">{name}</div>
                         </div>
                         <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                       </div>
@@ -763,46 +863,46 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="p-6 space-y-4">
-                  <h4 className="font-display font-bold text-sm text-white">Roster Formatting Instructions</h4>
-                  <ul className="text-xs text-neutral-400 space-y-3 font-medium">
+                <div className="p-5 sm:p-6 space-y-4 font-sans leading-relaxed">
+                  <h4 className="font-display font-bold text-sm text-white uppercase tracking-wider">Roster Guidelines</h4>
+                  <ul className="text-xs text-neutral-450 space-y-3 font-medium">
                     <li className="flex gap-2">
                       <span className="text-yellow-500 font-bold shrink-0">✔</span>
-                      You must supply <span className="text-neutral-200 font-bold">exactly 48 unique names</span> to map perfectly to the 48 FIFA teams.
+                      <span>You must supply <strong className="text-neutral-200">exactly 48 unique names</strong> to map perfectly to the 48 FIFA teams.</span>
                     </li>
                     <li className="flex gap-2">
                       <span className="text-yellow-500 font-bold shrink-0">✔</span>
-                      Download the CSV Template above if you want to copy-paste names in Microsoft Excel inside a compliant format.
+                      <span>Download the CSV Template above if you want to copy-paste names in Microsoft Excel inside a compliant format.</span>
                     </li>
                     <li className="flex gap-2">
                       <span className="text-yellow-500 font-bold shrink-0">✔</span>
-                      You may also click <span className="text-yellow-500 font-bold">"Fast-Track Demo"</span> to immediately test the broadcast loop with fictitious elite executive participants!
+                      <span>You may also click <strong className="text-yellow-400 font-bold">"Fast-Track Demo"</strong> to immediately test the broadcast loop with fictitious elite executive participants!</span>
                     </li>
                     <li className="flex gap-2">
                       <span className="text-yellow-500 font-bold shrink-0">✔</span>
-                      During the draw ceremony, Fisher-Yates randomization checks all lists to ensure zero duplicate entries or bias.
+                      <span>During the draw ceremony, Fisher-Yates randomization checks all lists to ensure zero duplicate entries or bias.</span>
                     </li>
                   </ul>
                 </div>
               </div>
 
               {/* Operational Audit Log block */}
-              <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl space-y-4">
+              <div className="bg-slate-900 p-5 sm:p-6 rounded-2xl border border-slate-800 shadow-xl space-y-4">
                 <div className="flex justify-between items-center">
-                  <h4 className="font-display font-bold text-sm text-white flex items-center gap-1.5">
-                    <Clock className="w-4 h-4 text-yellow-500" /> Compliance Audit Trail
+                  <h4 className="font-display font-bold text-sm text-white flex items-center gap-1.5 uppercase tracking-wider">
+                    <Clock className="w-4 h-4 text-yellow-500" /> Compliance Audit
                   </h4>
                   <span className="text-[9px] font-mono font-bold text-neutral-500 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">REALTIME</span>
                 </div>
 
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 max-h-56 overflow-y-auto space-y-3 font-mono text-[10px] leading-relaxed scrollbar-thin scrollbar-thumb-slate-800">
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 h-[280px] overflow-y-auto space-y-3 font-mono text-[10px] leading-relaxed scrollbar-thin scrollbar-thumb-slate-800">
                   {auditLogs.map((log) => (
-                    <div key={log.id} className="border-b border-slate-900 pb-2 last:border-0 last:pb-0">
+                    <div key={log.id} className="border-b border-slate-900 pb-2 last:border-0 last:pb-0 animate-fade-in">
                       <div className="flex justify-between text-neutral-500 mb-0.5">
                         <span className="text-neutral-600">ID: {log.id}</span>
                         <span>{log.timestamp}</span>
                       </div>
-                      <p className="text-neutral-300 font-sans tracking-tight">{log.action}</p>
+                      <p className="text-neutral-300 font-sans tracking-tight font-medium">{log.action}</p>
                     </div>
                   ))}
                 </div>
@@ -811,7 +911,7 @@ export default function App() {
             </div>
           </div>
         </div>
-        </div>
+      </div>
         )}
 
         {/* --- TAB CONTENT 2: CEREMONY CHAMBER --- */}
