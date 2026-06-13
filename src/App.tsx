@@ -271,60 +271,97 @@ export default function App() {
   // --- CSV PARSING ENGINE ---
   const handleCSVUpload = (text: string) => {
     try {
-      const rows = text.split(/\r?\n/).map(row => row.trim()).filter(row => row.length > 0);
+      // Remove UTF-8 BOM if present (e.g., from Excel sheets)
+      const sanitizedText = text.replace(/^\uFEFF/, "").trim();
+
+      const rows = sanitizedText
+        .split(/\r?\n/)
+        .map(row => row.trim())
+        .filter(row => row.length > 0);
+
       if (rows.length === 0) {
         showToast("The uploaded CSV file is empty.", "error");
         return;
       }
 
-      // Split the header and locate the 'Employee Name' index (row 0)
-      const headers = rows[0].split(",").map(h => h.replace(/["']/g, "").trim());
-      const employeeNameIdx = headers.findIndex(h => h.toLowerCase() === "employee name");
+      // Automatically detect if comma (,) or semicolon (;) separator is used
+      const firstRow = rows[0];
+      const commaCount = (firstRow.match(/,/g) || []).length;
+      const semiCount = (firstRow.match(/;/g) || []).length;
+      const sep = semiCount > commaCount ? ";" : ",";
 
-      if (employeeNameIdx === -1) {
-        showToast("Validation Failed: Missing header 'Employee Name' in CSV.", "error");
-        return;
-      }
+      // Read headers
+      const headers = firstRow.split(sep).map(h => h.replace(/["']/g, "").trim().toLowerCase());
+      
+      // Look for target headers like "employee name", "employee_name", "employee", "name", etc.
+      let employeeNameIdx = headers.findIndex(h => 
+        h === "employee name" || 
+        h === "employee_name" || 
+        h === "name" || 
+        h === "employee" || 
+        h.includes("employee") || 
+        h.includes("name")
+      );
 
-      // Read remaining lines
-      const parsedNames: string[] = [];
-      for (let i = 1; i < rows.length; i++) {
-        // Robust CSV row splitter accounting for quoted elements
-        const cols = rows[i].split(",").map(c => c.replace(/["']/g, "").trim());
-        if (cols[employeeNameIdx]) {
-          parsedNames.push(cols[employeeNameIdx]);
+      let parsedNames: string[] = [];
+
+      if (employeeNameIdx !== -1) {
+        // Known header found! Extract values from that index
+        for (let i = 1; i < rows.length; i++) {
+          const cols = rows[i].split(sep).map(c => c.replace(/["']/g, "").trim());
+          const val = cols[employeeNameIdx];
+          if (val) {
+            parsedNames.push(val);
+          }
+        }
+      } else {
+        // Fallback: No matches found, parse first column of all rows (ignoring standard headers if present)
+        for (let i = 0; i < rows.length; i++) {
+          const cols = rows[i].split(sep).map(c => c.replace(/["']/g, "").trim());
+          const val = cols[0];
+          if (val && val.toLowerCase() !== "employee name" && val.toLowerCase() !== "name") {
+            parsedNames.push(val);
+          }
         }
       }
 
-      // Filter out empty rows
-      const initialNames = parsedNames.filter(n => n.length > 0);
+      // Filter out empty rows and trim names
+      const initialNames = parsedNames
+        .map(n => n.trim())
+        .filter(n => {
+          if (!n) return false;
+          const lower = n.toLowerCase();
+          return lower !== "employee name" && lower !== "employee_name" && lower !== "name";
+        });
 
-      // Disambiguate duplicate names to prevent collision in set-subtraction algorithms
+      // extra detailed cleaning: remove any internal double spaces
+      const deeplyCleaned = initialNames.map(name => name.replace(/\s+/g, " "));
+
+      // Disambiguate duplicate names to prevent collision in lottery/room allocation
       const nameOccurrences = new Map<string, number>();
-      const finalNames = initialNames.map(name => {
-        const trimmedName = name.trim();
-        const count = nameOccurrences.get(trimmedName) || 0;
-        nameOccurrences.set(trimmedName, count + 1);
+      const finalNames = deeplyCleaned.map(name => {
+        const count = nameOccurrences.get(name) || 0;
+        nameOccurrences.set(name, count + 1);
         if (count > 0) {
-          return `${trimmedName} (${count + 1})`;
+          return `${name} (${count + 1})`;
         }
-        return trimmedName;
+        return name;
       });
 
       // CRITICAL REQUIREMENT VALIDATION: Check if exactly 48 names
       if (finalNames.length !== 48) {
-        showToast(`Please upload exactly 48 names. (Found ${finalNames.length} names)`, "error");
-        addAuditLog(`CSV Upload Rejected: Contained ${finalNames.length} names. Compliance requires exactly 48.`);
+        showToast(`Compliance mandates exactly 48 employees. You have ${finalNames.length} names in your file.`, "error");
+        addAuditLog(`CSV Upload Rejected: Contained ${finalNames.length} names. System requires exactly 48.`);
         return;
       }
 
       // Success Load
       setEmployees(finalNames);
-      setDraws([]); // reset any current matches
+      setDraws([]); // reset current match day allocations
       setCurrentReveal(null);
       setIsDemoMode(false);
-      showToast("CSV Roster Approved! Loaded 48 names successfully.", "success");
-      addAuditLog(`Roster Upload Approved: 48 Names verified and locked in directory.`);
+      showToast("Employee Roster Approved & Certified! 48 names loaded.", "success");
+      addAuditLog(`Roster Upload Approved via CSV: 48 employee profiles sanitized, verified, and locked.`);
       setActiveTab("ceremony");
 
     } catch (error) {
@@ -364,6 +401,8 @@ export default function App() {
         }
       };
       reader.readAsText(file);
+      // Reset input value to allow consecutive upload of same files
+      e.target.value = "";
     }
   };
 
