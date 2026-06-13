@@ -101,12 +101,37 @@ export default function App() {
   const [isAdminResetConfirmOpen, setIsAdminResetConfirmOpen] = useState<boolean>(false);
   const [isAdminFastPassConfirmOpen, setIsAdminFastPassConfirmOpen] = useState<boolean>(false);
 
+  // Manual text-area live-editor state
+  const [rawInputText, setRawInputText] = useState<string>(() => {
+    const saved = localStorage.getItem("sweepstake_employees");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.join("\n");
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    return "";
+  });
+
   // File Input Ref
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // --- PERSISTENCE SYNCHRONIZER EFFECTS ---
   useEffect(() => {
     localStorage.setItem("sweepstake_employees", JSON.stringify(employees));
+  }, [employees]);
+
+  // Synchronize manual input text when employees roster state changes
+  useEffect(() => {
+    if (employees.length > 0) {
+      setRawInputText(employees.join("\n"));
+    } else {
+      setRawInputText("");
+    }
   }, [employees]);
 
   useEffect(() => {
@@ -167,6 +192,80 @@ export default function App() {
     showToast("Successfully loaded exactly 48 Elite corporate staff members!", "success");
     addAuditLog("Admin Roster Loaded: 48 executive staff members initialized into queue.");
     setActiveTab("ceremony");
+  };
+
+  // --- REAL-TIME PARSED ROUTINES ---
+  const getLinesFromInput = (text: string) => {
+    return text
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(name => {
+        const trimmed = name.trim();
+        if (!trimmed) return false;
+        const lower = trimmed.toLowerCase();
+        return lower !== "employee name" && lower !== "employee_name" && lower !== "name";
+      });
+  };
+
+  // --- MANUAL ROSTER PROCESSING ENGINE ---
+  const handleManualNamesSubmit = (customText?: string) => {
+    try {
+      const textToParse = customText !== undefined ? customText : rawInputText;
+      
+      // Split by newline or comma
+      let rawLines: string[] = [];
+      if (textToParse.includes("\n")) {
+        rawLines = textToParse.split(/\r?\n/);
+      } else if (textToParse.includes(",")) {
+        rawLines = textToParse.split(",");
+      } else {
+        rawLines = [textToParse];
+      }
+
+      // 1. CLEANING STEP: Trim boundaries, remove empty rows, discard headers
+      const initialNames = rawLines
+        .map(line => line.trim())
+        .filter(name => {
+          if (!name) return false;
+          const lower = name.toLowerCase();
+          return lower !== "employee name" && lower !== "employee_name" && lower !== "name";
+        });
+
+      // 2. EXTRA DETAILED CLEANING: Normalize internal spaces (no double spaces)
+      const deeplyCleaned = initialNames.map(name => name.replace(/\s+/g, " "));
+
+      // 3. SECURE VERIFICATION & DUPLICATE DISAMBIGUATION:
+      // Prevent identity collision in lottery/room allocation
+      const nameOccurrences = new Map<string, number>();
+      const finalNames = deeplyCleaned.map(name => {
+        const count = nameOccurrences.get(name) || 0;
+        nameOccurrences.set(name, count + 1);
+        if (count > 0) {
+          return `${name} (${count + 1})`;
+        }
+        return name;
+      });
+
+      // 4. COMPLIANCE CHECK: Must be exactly 48 for complete allocation
+      if (finalNames.length !== 48) {
+        showToast(`Compliance mandates exactly 48 employees. You have ${finalNames.length} in current directory.`, "error");
+        addAuditLog(`Manual Roster Rejected: Entered ${finalNames.length} names. System requires exactly 48.`);
+        return;
+      }
+
+      // Success load and register
+      setEmployees(finalNames);
+      setDraws([]);
+      setCurrentReveal(null);
+      setIsDemoMode(false);
+      showToast("Employee Roster Approved & Certified! 48 names loaded.", "success");
+      addAuditLog(`Roster Approved via Direct Entry: 48 employee profiles sanitized, verified, and locked.`);
+      setActiveTab("ceremony");
+
+    } catch (error) {
+      showToast("Failed to verify input roster.", "error");
+      console.error(error);
+    }
   };
 
   // --- CSV PARSING ENGINE ---
@@ -470,6 +569,15 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-950 font-sans text-neutral-100 flex flex-col selection:bg-yellow-500/30 selection:text-white">
       
+      {/* Global Hidden CSV File Input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        accept=".csv"
+        className="hidden"
+      />
+      
       {/* --- FLOATING NOTIFICATIONS SYSTEM --- */}
       <div className="fixed top-20 right-4 sm:right-6 left-4 sm:left-auto z-50 flex flex-col gap-3 max-w-sm sm:max-w-md w-auto pointer-events-none">
         <AnimatePresence>
@@ -512,7 +620,7 @@ export default function App() {
           </div>
           <div>
             <div className="flex flex-wrap items-center gap-1 sm:gap-1.5">
-              <span className="font-display font-bold tracking-tight text-sm sm:text-base md:text-lg text-white">FIFA WORLD CUP 2026</span>
+              <span className="font-display font-bold tracking-tight text-sm sm:text-base md:text-lg text-white">⚽ FIFA WORLD CUP 2026</span>
               <span className="bg-yellow-500 text-slate-950 px-1 py-0.5 text-[7px] sm:text-[9px] font-mono font-black rounded tracking-wider leading-none">BROADCAST</span>
             </div>
             <p className="text-[9px] sm:text-[11px] text-neutral-400 uppercase tracking-widest font-mono">Corporate Sweepstake Suite</p>
@@ -630,7 +738,7 @@ export default function App() {
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/25 to-transparent pointer-events-none" />
                   </div>
-                  FIFA World Cup
+                  ⚽ FIFA World Cup
                 </span>{" "}
                 <span className="text-yellow-500 block sm:inline">2026 Sweepstakes</span>
               </h1>
@@ -703,23 +811,229 @@ export default function App() {
           <div className="w-full overflow-hidden">
             <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full px-2 sm:px-4 animate-fade-in">
             
-            {/* Draw Dashboard Stats Banner */}
-            <div className="bg-slate-900 border border-slate-800 p-4 sm:p-5 rounded-2xl w-full flex flex-col sm:flex-row justify-around items-center gap-4 text-center sm:text-left shadow-xl">
-              <div className="space-y-1">
-                <p className="text-neutral-400 text-[10px] sm:text-xs font-mono uppercase tracking-widest">Draw Progress</p>
-                <p className="text-white font-display font-black text-xl sm:text-2xl">{totalDrawn} <span className="text-neutral-500 text-sm sm:text-lg">/ 48 Assigned</span></p>
+            {employees.length !== 48 ? (
+              /* --- HIGH FIDELITY ROSTER ONBOARDING SUITE --- */
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-8 shadow-2xl relative overflow-hidden flex flex-col gap-6">
+                <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-br from-yellow-500/5 to-transparent rounded-full blur-3xl pointer-events-none" />
+                
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+                  <div className="space-y-1">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-yellow-500/10 border border-yellow-500/20 rounded-full text-[10px] font-mono font-bold text-yellow-400 uppercase tracking-wider">
+                      📋 PHASE 1: ROSTER VERIFICATION
+                    </div>
+                    <h2 className="text-xl sm:text-2xl font-display font-black text-white tracking-tight leading-none uppercase">
+                      Enter Your 48 sweepstakes Participants
+                    </h2>
+                    <p className="text-xs text-neutral-400 font-medium">
+                      Please type, paste, or upload exactly 48 employee names. Duplicates will be safely handled and cleaned instantly.
+                    </p>
+                  </div>
+                  
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={loadDemoEmployees}
+                      className="px-4 py-2 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-md active:translate-y-0.5"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 animate-pulse" /> Fast Demo (48 Staff)
+                    </button>
+                    <a
+                      href={getCSVTemplateURI()}
+                      download="world_cup_sweepstakes_template.csv"
+                      className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-white font-bold text-xs uppercase border border-slate-700 rounded-xl transition cursor-pointer flex items-center gap-1.5 font-display"
+                    >
+                      <Download className="w-3.5 h-3.5 text-neutral-450" /> CSV Template
+                    </a>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Left Column: Rich Textarea Manual input */}
+                  <div className="lg:col-span-12 xl:col-span-7 flex flex-col gap-3.5">
+                    <div className="flex justify-between items-center">
+                      <label className="text-xs uppercase tracking-wider text-neutral-300 font-mono font-black flex items-center gap-2">
+                        <span>⌨️ Manual Copy-Paste / Direct Input</span>
+                        <span className="text-[10px] text-neutral-500 capitalize font-medium">(one participant name per line)</span>
+                      </label>
+                      
+                      <button 
+                        onClick={() => setRawInputText("")}
+                        className="text-[10px] font-mono uppercase text-rose-400 hover:text-rose-300 transition cursor-pointer border border-rose-500/25 bg-rose-500/5 px-2.5 py-0.5 rounded"
+                        title="Clear current text area"
+                      >
+                        Reset Text
+                      </button>
+                    </div>
+
+                    <div className="relative">
+                      <textarea
+                        rows={14}
+                        value={rawInputText}
+                        onChange={(e) => setRawInputText(e.target.value)}
+                        placeholder={"Victoria Sterling\nJames Carter\nNadia Petrova\nHiroshi Tanaka\nOmar Al-Fayed\n... (type or paste your list here)"}
+                        className="w-full bg-slate-950 border border-slate-800 focus:border-yellow-500/50 rounded-2xl p-4 text-xs sm:text-sm text-neutral-100 font-mono outline-none focus:ring-1 focus:ring-yellow-500/30 transition-all leading-relaxed whitespace-pre"
+                      />
+                    </div>
+
+                    <div className="bg-slate-950/45 border border-slate-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+                      <div className="flex items-center gap-2">
+                        <span className="text-neutral-400">Lines Drafted:</span>
+                        <span className={`font-bold px-2.5 py-0.5 rounded ${
+                          getLinesFromInput(rawInputText).length === 48 
+                            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" 
+                            : "bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 animate-pulse"
+                        }`}>
+                          {getLinesFromInput(rawInputText).length} / 48 Names
+                        </span>
+                      </div>
+                      
+                      <button
+                        onClick={() => handleManualNamesSubmit()}
+                        disabled={getLinesFromInput(rawInputText).length !== 48}
+                        className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:from-slate-850 disabled:to-slate-850 disabled:text-neutral-550 disabled:border-slate-850 text-slate-950 font-bold uppercase tracking-wider rounded-xl transition shadow-lg shrink-0 flex items-center gap-1.5 text-xs font-display hover:scale-[1.01] active:translate-y-0.5 cursor-pointer disabled:cursor-not-allowed"
+                      >
+                        <CheckCircle className="w-4 h-4" /> Approve & Lock Roster
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Real-time Compliance check, Drag & Drop CSV */}
+                  <div className="lg:col-span-12 xl:col-span-5 flex flex-col gap-5">
+                    
+                    {/* Real-time Checklist */}
+                    <div className="bg-slate-950/60 rounded-2xl border border-slate-850 p-4 sm:p-5 space-y-4">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-300 font-mono">
+                        🛠️ Real-Time Compliance Inspector
+                      </h4>
+                      
+                      <div className="space-y-3.5">
+                        {/* Requirement 1: Exactly 48 names */}
+                        <div className="flex items-start gap-3 text-xs">
+                          {getLinesFromInput(rawInputText).length === 48 ? (
+                            <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                          ) : (
+                            <AlertCircle className="w-4 h-4 text-yellow-500 shrink-0 mt-0.5" />
+                          )}
+                          <div className="space-y-0.5">
+                            <p className="font-bold text-neutral-200">Exactly 48 Elite Names</p>
+                            <p className="text-[10.5px] text-neutral-400 leading-relaxed">
+                              Each name matches one of the 48 participating World Cup team seats. You current have <strong className="text-yellow-500">{getLinesFromInput(rawInputText).length}</strong>.
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Requirement 2: Clean Whitespace */}
+                        <div className="flex items-start gap-3 text-xs">
+                          <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                          <div className="space-y-0.5">
+                            <p className="font-bold text-neutral-200">Auto-Sanitation & Trimmed Data</p>
+                            <p className="text-[10.5px] text-neutral-400 leading-relaxed">
+                              Extra line spaces and internal double spaces are automatically filtered out and cleaned upon confirmation.
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Requirement 3: Duplicates */}
+                        <div className="flex items-start gap-3 text-xs">
+                          {(() => {
+                            const occurrences = new Map<string, number>();
+                            const lns = getLinesFromInput(rawInputText);
+                            let dupesFound = false;
+                            for (let n of lns) {
+                              const norm = n.toLowerCase();
+                              if (occurrences.has(norm)) {
+                                dupesFound = true;
+                                break;
+                              }
+                              occurrences.set(norm, 1);
+                            }
+                            
+                            if (dupesFound) {
+                              return (
+                                <>
+                                  <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                                  <div className="space-y-0.5">
+                                    <p className="font-bold text-amber-400">Duplicate Profiles Automatically Resolved</p>
+                                    <p className="text-[10.5px] text-neutral-450 leading-relaxed">
+                                      We found matching names in your list! Suffix numbers e.g. <span className="text-yellow-400 font-mono">(2)</span> will be appended to prevent lottery collisions on match day.
+                                    </p>
+                                  </div>
+                                </>
+                              );
+                            } else {
+                              return (
+                                <>
+                                  <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                                  <div className="space-y-0.5">
+                                    <p className="font-bold text-neutral-200">Zero duplicate entries detected</p>
+                                    <p className="text-[10.5px] text-neutral-400 leading-relaxed">
+                                      All entered employee lines are unique and perfectly collision-free for the random drawing drawer.
+                                    </p>
+                                  </div>
+                                </>
+                              );
+                            }
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Compact CSV Drag receiver with inline file inputs */}
+                    <div 
+                      onDragOver={(e) => { e.preventDefault(); setIsDraggingOver(true); }}
+                      onDragLeave={() => setIsDraggingOver(false)}
+                      onDrop={handleDrop}
+                      onClick={() => fileInputRef.current?.click()}
+                      className={`rounded-2xl border-2 border-dashed p-5 text-center transition flex flex-col items-center gap-3 relative overflow-hidden cursor-pointer ${
+                        isDraggingOver 
+                          ? "border-yellow-500 bg-yellow-500/5 shadow-inner" 
+                          : "border-slate-800 hover:border-slate-700/80 bg-slate-950/40"
+                      }`}
+                    >
+                      <div className="p-2.5 bg-slate-900 rounded-full text-yellow-500 border border-slate-800">
+                        <Upload className="w-5 h-5" />
+                      </div>
+                      
+                      <div className="space-y-0.5">
+                        <p className="font-bold text-xs text-white uppercase tracking-wider font-display">Prefer Excel/CSV Upload?</p>
+                        <p className="text-[10.5px] text-neutral-400 max-w-xs mx-auto leading-normal">
+                          Drop a compliant <strong className="font-mono text-yellow-500">.csv</strong> roster containing the header &ldquo;Employee Name&rdquo; to instantly load and pre-populate.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation(); // prevent double bubble trigger
+                          fileInputRef.current?.click();
+                        }}
+                        className="px-3.5 py-1.5 bg-slate-900 border border-slate-850 hover:border-slate-700 hover:text-white rounded-lg text-[11px] font-bold text-neutral-300 font-mono cursor-pointer transition shadow-sm"
+                      >
+                        Choose File
+                      </button>
+                    </div>
+
+                  </div>
+                </div>
               </div>
-              <div className="hidden sm:block h-10 w-px bg-slate-800"></div>
-              <div className="space-y-1">
-                <p className="text-neutral-400 text-[10px] sm:text-xs font-mono uppercase tracking-widest">Remaining Teams</p>
-                <p className="text-yellow-500 font-display font-black text-xl sm:text-2xl">{48 - totalDrawn}</p>
-              </div>
-              <div className="hidden sm:block h-10 w-px bg-slate-800"></div>
-              <div className="space-y-1">
-                <p className="text-neutral-400 text-[10px] sm:text-xs font-mono uppercase tracking-widest">Registered Employees</p>
-                <p className="text-white font-display font-black text-xl sm:text-2xl">{employees.length} <span className="text-neutral-500 text-xs sm:text-sm">Members Locked</span></p>
-              </div>
-            </div>
+            ) : (
+              <>
+                {/* Draw Dashboard Stats Banner */}
+                <div className="bg-slate-900 border border-slate-800 p-4 sm:p-5 rounded-2xl w-full flex flex-col sm:flex-row justify-around items-center gap-4 text-center sm:text-left shadow-xl">
+                  <div className="space-y-1">
+                    <p className="text-neutral-400 text-[10px] sm:text-xs font-mono uppercase tracking-widest">Draw Progress</p>
+                    <p className="text-white font-display font-black text-xl sm:text-2xl">{totalDrawn} <span className="text-neutral-500 text-sm sm:text-lg">/ 48 Assigned</span></p>
+                  </div>
+                  <div className="hidden sm:block h-10 w-px bg-slate-800"></div>
+                  <div className="space-y-1">
+                    <p className="text-neutral-400 text-[10px] sm:text-xs font-mono uppercase tracking-widest">Remaining Teams</p>
+                    <p className="text-yellow-500 font-display font-black text-xl sm:text-2xl">{48 - totalDrawn}</p>
+                  </div>
+                  <div className="hidden sm:block h-10 w-px bg-slate-800"></div>
+                  <div className="space-y-1">
+                    <p className="text-neutral-400 text-[10px] sm:text-xs font-mono uppercase tracking-widest">Registered Employees</p>
+                    <p className="text-white font-display font-black text-xl sm:text-2xl">{employees.length} <span className="text-neutral-500 text-xs sm:text-sm">Members Locked</span></p>
+                  </div>
+                </div>
 
             {/* MAIN 3-COLUMN WORKSPACE */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start w-full min-w-0">
@@ -1149,6 +1463,8 @@ export default function App() {
                 </div>
               </div>
             )}
+          </>
+        )}
 
           </div>
         </div>
@@ -1578,13 +1894,6 @@ export default function App() {
                             : "border-slate-800 hover:border-slate-700 bg-slate-950/50"
                         }`}
                       >
-                        <input
-                          type="file"
-                          ref={fileInputRef}
-                          onChange={handleFileChange}
-                          accept=".csv"
-                          className="hidden"
-                        />
                         {employees.length === 48 ? (
                           <div className="p-3 sm:p-4 bg-emerald-500/10 rounded-full border border-emerald-500/20 text-emerald-400">
                             <CheckCircle className="w-8 h-8 sm:w-10 sm:h-10 animate-bounce" />
