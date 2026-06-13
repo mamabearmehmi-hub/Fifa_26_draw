@@ -15,6 +15,8 @@ import {
   Trash2,
   Volume2,
   VolumeX,
+  Mic,
+  MicOff,
   Search,
   Play,
   FileText,
@@ -82,6 +84,9 @@ export default function App() {
   const [searchQueryRight, setSearchQueryRight] = useState<string>("");
   const [confederationFilter, setConfederationFilter] = useState<string>("ALL");
   const [isAudioEnabled, setIsAudioEnabled] = useState<boolean>(true);
+  const [isSpeechEnabled, setIsSpeechEnabled] = useState<boolean>(() => {
+    return localStorage.getItem("sweepstake_is_speech_enabled") !== "false";
+  });
   const [isDemoMode, setIsDemoMode] = useState<boolean>(() => {
     return localStorage.getItem("sweepstake_is_demo") === "true";
   });
@@ -146,6 +151,10 @@ export default function App() {
     localStorage.setItem("sweepstake_is_demo", String(isDemoMode));
   }, [isDemoMode]);
 
+  useEffect(() => {
+    localStorage.setItem("sweepstake_is_speech_enabled", String(isSpeechEnabled));
+  }, [isSpeechEnabled]);
+
   // --- TOAST DISPATCHER HELPER ---
   const showToast = (message: string, type: "success" | "error" | "info" = "info") => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -162,6 +171,40 @@ export default function App() {
       timestamp: new Date().toLocaleTimeString() + " " + new Date().toLocaleDateString()
     };
     setAuditLogs((prev) => [log, ...prev]);
+  };
+
+  // --- WEB SPEECH TEXT-TO-SPEECH ANNOUNCER ---
+  const announceDraw = (employeeName: string, teamName: string) => {
+    if (!isSpeechEnabled) return;
+    if ("speechSynthesis" in window) {
+      try {
+        // Cancel active/queued speech utterance
+        window.speechSynthesis.cancel();
+
+        // Clean name from trailing parens (e.g. "Victoria Sterling (CEO Office)" -> "Victoria Sterling")
+        const cleanedEmployee = employeeName.replace(/\s*\(.*?\)/g, "").trim();
+
+        const text = `${cleanedEmployee} has been assigned to ${teamName}!`;
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 0.95; // Paced for corporate stadium broadcast cadence
+        utterance.pitch = 1.0;
+        utterance.volume = 1.0;
+
+        // Try getting voices on standard load sequence
+        const voices = window.speechSynthesis.getVoices();
+        const preferredVoice = voices.find((v) => v.lang.startsWith("en-") && v.name.toLowerCase().includes("google"))
+          || voices.find((v) => v.lang.startsWith("en-"))
+          || null;
+
+        if (preferredVoice) {
+          utterance.voice = preferredVoice;
+        }
+
+        window.speechSynthesis.speak(utterance);
+      } catch (err) {
+        console.warn("Speech Synthesis engine exception", err);
+      }
+    }
   };
 
   // --- DEMO EMPLOYEE ROSTER ---
@@ -194,9 +237,90 @@ export default function App() {
     setActiveTab("ceremony");
   };
 
+  const loadDemoMultiTeamEmployees = () => {
+    const demoList = [
+      "Victoria Sterling (CEO Office) x5",
+      "James Carter (Engineering Lead) *2",
+      "Nadia Petrova (Security Compliance) (3)",
+      "Hiroshi Tanaka (Chief Product Officer) x5",
+      "Amara Finch (Senior UX Designer)",
+      "Liam O'Connor (DevOps Strategist) x2",
+      "Elena Alvarez (Head of Marketing) *2",
+      "Omar Al-Fayed (Data Analytics)",
+      "Sophie Dubois (HR Manager) (4)",
+      "Marcus Aurelius (Corporate Governance) x3",
+      "Bruce Wayne (Venture Partner) *5",
+      "Tony Stark (R&D Engineering) (5)",
+      "Clark Kent (Public Relations) x5",
+      "Diana Prince (Senior Counsel) *5"
+    ];
+
+    // Expand them with expandMultipliers so they map to ticket slots
+    const expanded = expandMultipliers(demoList);
+    
+    // Disambiguate duplicate names to prevent collision in lottery/room allocation
+    const nameOccurrences = new Map<string, number>();
+    const finalNames = expanded.map(name => {
+      const trimmedName = name.trim();
+      const count = nameOccurrences.get(trimmedName) || 0;
+      nameOccurrences.set(trimmedName, count + 1);
+      if (count > 0) {
+        return `${trimmedName} (${count + 1})`;
+      }
+      return trimmedName;
+    });
+
+    setEmployees(finalNames);
+    setDraws([]);
+    setCurrentReveal(null);
+    setIsDemoMode(true);
+    showToast("Loaded Hybrid Multi-Team Roster! 14 employees expanded to exactly 48 slots.", "success");
+    addAuditLog("Hybrid Multi-Team Roster Loaded: 14 employees with active multi-slot tickets expanded and verified.");
+    setActiveTab("ceremony");
+  };
+
   // --- REAL-TIME PARSED ROUTINES ---
+  const expandMultipliers = (lines: string[]): string[] => {
+    const result: string[] = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      // Pattern 1: matching "Alice x5", "Bob * 2"
+      const trailingPattern = /^(.*?)\s+(?:x|\*)\s*(\d+)\s*$/i;
+      // Pattern 2: matching "Charlie (x3)" or "Diana (5)"
+      const parenPattern = /^(.*?)\s*\(\s*(?:x|\*|)\s*(\d+)\s*\)\s*$/i;
+
+      let baseName = trimmed;
+      let count = 1;
+
+      const matchTrailing = trimmed.match(trailingPattern);
+      const matchParen = trimmed.match(parenPattern);
+
+      if (matchTrailing) {
+        baseName = matchTrailing[1].trim();
+        count = parseInt(matchTrailing[2], 10);
+      } else if (matchParen) {
+        baseName = matchParen[1].trim();
+        count = parseInt(matchParen[2], 10);
+      }
+
+      if (isNaN(count) || count < 1) {
+        count = 1;
+      }
+      
+      // Enforce a hard cap of 48 assignments per person to prevent extreme allocation issues
+      if (count > 48) count = 48;
+
+      for (let i = 0; i < count; i++) {
+        result.push(baseName);
+      }
+    }
+    return result;
+  };
+
   const getLinesFromInput = (text: string) => {
-    return text
+    const rawLines = text
       .split(/\r?\n/)
       .map(line => line.trim())
       .filter(name => {
@@ -205,6 +329,7 @@ export default function App() {
         const lower = trimmed.toLowerCase();
         return lower !== "employee name" && lower !== "employee_name" && lower !== "name";
       });
+    return expandMultipliers(rawLines);
   };
 
   // --- MANUAL ROSTER PROCESSING ENGINE ---
@@ -231,10 +356,13 @@ export default function App() {
           return lower !== "employee name" && lower !== "employee_name" && lower !== "name";
         });
 
-      // 2. EXTRA DETAILED CLEANING: Normalize internal spaces (no double spaces)
-      const deeplyCleaned = initialNames.map(name => name.replace(/\s+/g, " "));
+      // 2. EXPAND MULTIPLIERS: For employees seeking multiple allocation slots (e.g. Alice x5)
+      const expandedNames = expandMultipliers(initialNames);
 
-      // 3. SECURE VERIFICATION & DUPLICATE DISAMBIGUATION:
+      // 3. EXTRA DETAILED CLEANING: Normalize internal spaces (no double spaces)
+      const deeplyCleaned = expandedNames.map(name => name.replace(/\s+/g, " "));
+
+      // 4. SECURE VERIFICATION & DUPLICATE DISAMBIGUATION:
       // Prevent identity collision in lottery/room allocation
       const nameOccurrences = new Map<string, number>();
       const finalNames = deeplyCleaned.map(name => {
@@ -246,7 +374,7 @@ export default function App() {
         return name;
       });
 
-      // 4. COMPLIANCE CHECK: Must be exactly 48 for complete allocation
+      // 5. COMPLIANCE CHECK: Must be exactly 48 total ticket slots for full placement
       if (finalNames.length !== 48) {
         showToast(`Compliance mandates exactly 48 employees. You have ${finalNames.length} in current directory.`, "error");
         addAuditLog(`Manual Roster Rejected: Entered ${finalNames.length} names. System requires exactly 48.`);
@@ -303,6 +431,20 @@ export default function App() {
         h.includes("name")
       );
 
+      // Find team count or number of teams column index
+      let teamsCountIdx = headers.findIndex(h => 
+        h === "number of teams" ||
+        h === "number_of_teams" ||
+        h === "team count" ||
+        h === "teams count" ||
+        h === "teams" ||
+        h === "slots" ||
+        h === "count" ||
+        h.includes("teams") ||
+        h.includes("count") ||
+        h.includes("slots")
+      );
+
       let parsedNames: string[] = [];
 
       if (employeeNameIdx !== -1) {
@@ -311,7 +453,16 @@ export default function App() {
           const cols = rows[i].split(sep).map(c => c.replace(/["']/g, "").trim());
           const val = cols[employeeNameIdx];
           if (val) {
-            parsedNames.push(val);
+            let count = 1;
+            if (teamsCountIdx !== -1 && cols[teamsCountIdx]) {
+              const parsedCount = parseInt(cols[teamsCountIdx], 10);
+              if (!isNaN(parsedCount) && parsedCount >= 1) {
+                count = parsedCount;
+              }
+            }
+            for (let c = 0; c < count; c++) {
+              parsedNames.push(val);
+            }
           }
         }
       } else {
@@ -320,7 +471,16 @@ export default function App() {
           const cols = rows[i].split(sep).map(c => c.replace(/["']/g, "").trim());
           const val = cols[0];
           if (val && val.toLowerCase() !== "employee name" && val.toLowerCase() !== "name") {
-            parsedNames.push(val);
+            let count = 1;
+            if (cols[1]) {
+              const parsedCount = parseInt(cols[1], 10);
+              if (!isNaN(parsedCount) && parsedCount >= 1) {
+                count = parsedCount;
+              }
+            }
+            for (let c = 0; c < count; c++) {
+              parsedNames.push(val);
+            }
           }
         }
       }
@@ -334,8 +494,11 @@ export default function App() {
           return lower !== "employee name" && lower !== "employee_name" && lower !== "name";
         });
 
+      // Expand multipliers for multiple team seeking slots (e.g. "John Doe x3")
+      const expandedNames = expandMultipliers(initialNames);
+
       // extra detailed cleaning: remove any internal double spaces
-      const deeplyCleaned = initialNames.map(name => name.replace(/\s+/g, " "));
+      const deeplyCleaned = expandedNames.map(name => name.replace(/\s+/g, " "));
 
       // Disambiguate duplicate names to prevent collision in lottery/room allocation
       const nameOccurrences = new Map<string, number>();
@@ -514,6 +677,9 @@ export default function App() {
         playFanfareCrash();
       }
 
+      // Voice broadcast announcement
+      announceDraw(targetEmployeeName, targetTeam.name);
+
       // Explosion Confetti
       confetti({
         particleCount: 160,
@@ -591,16 +757,12 @@ export default function App() {
 
   // CSV Template Generating Data URI
   const getCSVTemplateURI = () => {
-    // Generates a simple beautiful string
-    const csvContent = "Employee Name\n" + [
-      "Victoria Sterling", "James Carter", "Nadia Petrova", "Hiroshi Tanaka", "Amara Finch", "Liam O'Connor",
-      "Elena Alvarez", "Omar Al-Fayed", "Sophie Dubois", "Marcus Aurelius", "Penelope Rose", "Bruce Wayne",
-      "Tony Stark", "Selina Kyle", "Clark Kent", "Diana Prince", "Peter Parker", "Barry Allen",
-      "Arthur Curry", "Hal Jordan", "Wally West", "Harvey Dent", "James Bond", "Ada Lovelace",
-      "Alan Turing", "Grace Hopper", "Margaret Hamilton", "Steve Jobs", "Bill Gates", "Elon Musk",
-      "Sundar Pichai", "Tim Cook", "Satya Nadella", "Sam Altman", "Alexander Wright", "Beatrix Vance",
-      "Charles Sterling", "Ethan Hunt", "Fiona Gallagher", "George Costanza", "Helena Rostova", "Ian Malcolm",
-      "Julia Roberts", "Kevin Thorne", "Laura Croft", "Zara Larsson", "Yousef Al-Kouri", "Xavier Cooper"
+    // Generates a beautiful multi-column template where counts add up directly to 48
+    const csvContent = "Employee Name,Number of Teams\n" + [
+      "Victoria Sterling,5", "James Carter,2", "Nadia Petrova,3", "Hiroshi Tanaka,5",
+      "Amara Finch,1", "Liam O'Connor,2", "Elena Alvarez,2", "Omar Al-Fayed,1",
+      "Sophie Dubois,4", "Marcus Aurelius,3", "Bruce Wayne,5", "Tony Stark,5",
+      "Clark Kent,5", "Diana Prince,5"
     ].join("\n");
     return "data:text/csv;charset=utf-8," + encodeURIComponent(csvContent);
   };
@@ -678,6 +840,18 @@ export default function App() {
             title="Toggle synthesized drumroll sweep sounds"
           >
             {isAudioEnabled ? <Volume2 className="w-4 h-4 text-yellow-500" /> : <VolumeX className="w-4 h-4 text-neutral-500" />}
+          </button>
+
+          {/* Voice controller */}
+          <button
+            onClick={() => {
+              setIsSpeechEnabled(!isSpeechEnabled);
+              showToast(!isSpeechEnabled ? "Voice Commentary Engaged" : "Voice Commentary Suspended", "info");
+            }}
+            className="p-1.5 sm:p-2 bg-slate-800 hover:bg-slate-700 text-neutral-300 hover:text-white rounded-lg border border-slate-700 transition cursor-pointer shrink-0"
+            title="Toggle speech voice-over of drawn matches"
+          >
+            {isSpeechEnabled ? <Mic className="w-4 h-4 text-yellow-500" /> : <MicOff className="w-4 h-4 text-neutral-500" />}
           </button>
 
           {/* Quick tab controllers */}
@@ -808,8 +982,14 @@ export default function App() {
                     🚀 FAST-TRACK DEMO (48 STAFF)
                   </button>
                   <button
+                    onClick={loadDemoMultiTeamEmployees}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 border border-yellow-500/20 hover:border-yellow-500/40 hover:text-white text-yellow-400 font-bold text-xs uppercase tracking-wider rounded-xl transition cursor-pointer font-display scale-100 hover:scale-[1.01] active:translate-y-0.5"
+                  >
+                    🧬 MULTI-TEAM DEMO ROSTER
+                  </button>
+                  <button
                     onClick={() => setActiveTab("support")}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-850 hover:text-white text-neutral-300 font-bold text-xs uppercase tracking-wide rounded-xl border border-slate-800 hover:border-slate-700 transition cursor-pointer font-display"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-850 hover:text-white text-neutral-300 font-bold text-xs uppercase tracking-wide rounded-xl border border-slate-800 hover:border-slate-705 transition cursor-pointer font-display"
                   >
                     📂 UPLOAD CSV FILE
                   </button>
@@ -871,14 +1051,22 @@ export default function App() {
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       onClick={loadDemoEmployees}
-                      className="px-4 py-2 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-md active:translate-y-0.5"
+                      className="px-3.5 py-2 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-slate-950 font-bold text-[11px] uppercase tracking-wider rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-md active:translate-y-0.5"
+                      title="Load exactly 48 unique employee names"
                     >
-                      <Sparkles className="w-3.5 h-3.5 animate-pulse" /> Fast Demo (48 Staff)
+                      <Sparkles className="w-3.5 h-3.5" /> Demo (48 Staff)
+                    </button>
+                    <button
+                      onClick={loadDemoMultiTeamEmployees}
+                      className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 border border-yellow-500/30 hover:border-yellow-500/60 text-yellow-400 font-bold text-[11px] uppercase tracking-wider rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-md active:translate-y-0.5"
+                      title="Load 14 corporate members with allocation tickets (e.g. x5, *2) expanded to exactly 48 spots"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-yellow-400 animate-pulse" /> Multi-Team Demo
                     </button>
                     <a
                       href={getCSVTemplateURI()}
                       download="world_cup_sweepstakes_template.csv"
-                      className="px-4 py-2 bg-slate-800 hover:bg-slate-750 text-white font-bold text-xs uppercase border border-slate-700 rounded-xl transition cursor-pointer flex items-center gap-1.5 font-display"
+                      className="px-3.5 py-2 bg-slate-800 hover:bg-slate-750 text-white font-bold text-[11px] uppercase border border-slate-700 rounded-xl transition cursor-pointer flex items-center gap-1.5 font-display"
                     >
                       <Download className="w-3.5 h-3.5 text-neutral-450" /> CSV Template
                     </a>
@@ -1013,6 +1201,18 @@ export default function App() {
                             }
                           })()}
                         </div>
+
+                        {/* Requirement 4: Multi-Team Multipliers */}
+                        <div className="flex items-start gap-3 text-xs border-t border-slate-800/60 pt-3">
+                          <Sparkles className="w-4 h-4 text-yellow-500 shrink-0 mt-0.5" />
+                          <div className="space-y-0.5">
+                            <p className="font-bold text-neutral-200">Multi-Team Ticket Allocation</p>
+                            <p className="text-[10.5px] text-neutral-400 leading-relaxed">
+                              Some employees want more than one team? Append <strong className="text-yellow-550 font-mono">x5</strong>, <strong className="text-yellow-555 font-mono">*2</strong>, or <strong className="text-yellow-555 font-mono">(3)</strong> to any name (e.g. <span className="text-yellow-500 font-mono">Alice x5</span>, <span className="text-yellow-555 font-mono">Bob *2</span>). This automatically expands them to match multiple draw spots, so they can win multiple slots safely!
+                            </p>
+                          </div>
+                        </div>
+
                       </div>
                     </div>
 
@@ -1894,17 +2094,25 @@ export default function App() {
                         Use a perfectly parsed spreadsheet, or click below to launch instantly with our premium demo staff directory.
                       </p>
                     </div>
-                    <div className="flex flex-col sm:flex-row gap-2.5 shrink-0 w-full lg:w-auto mt-2 lg:mt-0">
+                    <div className="flex flex-col sm:flex-row flex-wrap gap-2.5 shrink-0 w-full lg:w-auto mt-2 lg:mt-0">
                       <button
                         onClick={loadDemoEmployees}
-                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 sm:px-6 py-3 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-slate-950 font-bold rounded-xl transition shadow-lg text-xs sm:text-sm hover:scale-[1.02] cursor-pointer animate-pulse-subtle font-display uppercase tracking-wider"
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-slate-950 font-bold rounded-xl transition shadow-lg text-xs hover:scale-[1.02] cursor-pointer font-display uppercase tracking-wider text-center"
+                        title="Load 48 unique staff members"
                       >
-                        <Sparkles className="w-4 h-4 shrink-0" /> Fast-Track Demo
+                        <Sparkles className="w-4 h-4 shrink-0" /> Demo (48 Unique)
+                      </button>
+                      <button
+                        onClick={loadDemoMultiTeamEmployees}
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-850 border border-yellow-500/20 hover:border-yellow-500/50 text-yellow-500 font-bold rounded-xl transition shadow-lg text-xs hover:scale-[1.02] cursor-pointer font-display uppercase tracking-wider text-center"
+                        title="Load 14 staff members with ticket counts summing to 48"
+                      >
+                        <Sparkles className="w-4 h-4 shrink-0 text-yellow-400" /> Multi-Team Demo
                       </button>
                       <a
                         href={getCSVTemplateURI()}
                         download="world_cup_sweepstakes_template.csv"
-                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 sm:px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl border border-slate-700 transition text-xs sm:text-sm text-center cursor-pointer font-display uppercase tracking-wider"
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl border border-slate-700 transition text-xs text-center cursor-pointer font-display uppercase tracking-wider"
                       >
                         <Download className="w-4 h-4 shrink-0 text-neutral-400" /> Get Template CSV
                       </a>
